@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+:root {
+  /* ダークモードベースのカラーパレット */
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #1a1f2e;
+  --bg-card-hover: #232a3d;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent-green: #22c55e;
+  --accent-red: #ef4444;
+  --accent-blue: #3b82f6;
+  --accent-amber: #f59e0b;
+  --accent-purple: #a855f7;
+  --border-color: #1f2937;
+  --border-glow: rgba(59, 130, 246, 0.3);
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* ガラスモーフィズムカード */
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(26, 31, 46, 0.8),
+    rgba(17, 24, 39, 0.6)
+  );
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+}
+
+/* 光るボーダー */
+.glow-border {
+  border: 1px solid var(--border-glow);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.1),
+    inset 0 0 15px rgba(59, 130, 246, 0.05);
+}
+
+/* アクションボタン共通 */
+.action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+  min-height: 64px;
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+.action-btn-buy {
+  background: linear-gradient(135deg, #166534, #15803d);
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.action-btn-buy:hover {
+  background: linear-gradient(135deg, #15803d, #16a34a);
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+}
+
+.action-btn-sell {
+  background: linear-gradient(135deg, #991b1b, #b91c1c);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+.action-btn-sell:hover {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+.action-btn-hold {
+  background: linear-gradient(135deg, #1e3a5f, #1e40af);
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.3);
+}
+.action-btn-hold:hover {
+  background: linear-gradient(135deg, #1e40af, #2563eb);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.action-btn-stop {
+  background: linear-gradient(135deg, #78350f, #92400e);
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.3);
+}
+.action-btn-stop:hover {
+  background: linear-gradient(135deg, #92400e, #b45309);
+  box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+}
+
+/* プログレスバー */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-secondary);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* スクロールバーのカスタマイズ */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+/* スマホ対応：タッチ領域を広く */
+@media (max-width: 768px) {
+  .action-btn {
+    min-height: 56px;
+    padding: 10px 8px;
+    font-size: 12px;
+  }
+}
