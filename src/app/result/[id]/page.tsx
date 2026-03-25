@@ -50,6 +50,7 @@ export default function ResultPage() {
 
       if (session) {
         setResult({
+          totalKnocks: session.total_knocks ?? 0,
           profitFactor: session.profit_factor ?? 0,
           riskRewardRatio: session.risk_reward_ratio ?? 0,
           expectedValue: session.expected_value ?? 0,
@@ -65,6 +66,7 @@ export default function ResultPage() {
     } catch {
       // フォールバック：デモ結果
       setResult({
+        totalKnocks: 10,
         profitFactor: 1.5,
         riskRewardRatio: 1.2,
         expectedValue: 0.8,
