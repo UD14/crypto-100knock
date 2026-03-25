@@ -61,14 +61,31 @@ export interface Scenario {
 
 // KPI結果
 export interface SessionResult {
+  totalKnocks: number;
+  winRate: number;
+  totalPnl: number;
   profitFactor: number;
   riskRewardRatio: number;
   expectedValue: number;
-  winRate: number;
   totalTrades: number;
   winTrades: number;
   lossTrades: number;
   holdCount: number;
-  totalPnl: number;
   actions: SessionAction[];
+}
+
+// Zustandストア用の状態定義
+export interface SessionState {
+  sessionId: string | null;
+  userId: string;
+  status: "idle" | "active" | "completed" | "abandoned";
+  currentKnock: number;
+  totalPnl: number;
+  winCount: number;
+  lossCount: number;
+  holdCount: number;
+  actionResults: SessionAction[];
+  hasPosition: boolean;
+  positionType: "long" | "short" | null;
+  entryPrice: number | null;
 }

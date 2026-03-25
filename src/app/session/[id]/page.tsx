@@ -106,31 +106,38 @@ export default function SessionPage() {
 
     try {
       // Supabaseからデータ取得を試みる
-      const { data: ohlcvData } = await supabase
+      // 本来はconfigから動的に取得すべきだが、一旦BTC/4hで動作確認
+      const { data: ohlcvData, error } = await supabase
         .from("ohlcv_data")
         .select("*")
+        .eq("symbol", "BTC")
+        .eq("timeframe", "4h")
         .order("timestamp", { ascending: true })
-        .limit(500);
+        .limit(1000);
+
+      if (error) throw error;
 
       if (ohlcvData && ohlcvData.length > 50) {
-        // ランダムな開始点を選択
-        const startIdx = Math.floor(
-          Math.random() * (ohlcvData.length - 50)
-        );
+        // ランダムな開始点を選択（100本ノック分+バッファが必要なため後方に余裕を持たせる）
+        const maxStart = Math.max(0, ohlcvData.length - 200);
+        const startIdx = Math.floor(Math.random() * maxStart);
+        
+        // 50本分を1つのシナリオとして切り出す
         const scenarioData = ohlcvData.slice(startIdx, startIdx + 50);
         const visible = scenarioData.slice(0, 30);
         const hidden = scenarioData.slice(30);
+        
         setVisibleCandles(visible);
         setHiddenCandles(hidden);
       } else {
-        // デモデータにフォールバック
+        console.warn("十分なデータが見つかりませんでした。デモデータを使用します。");
         const basePrice = 40000 + Math.random() * 30000;
         const allCandles = generateDemoCandles(50, basePrice);
         setVisibleCandles(allCandles.slice(0, 30));
         setHiddenCandles(allCandles.slice(30));
       }
-    } catch {
-      // エラー時もデモデータで動作
+    } catch (err) {
+      console.error("データ取得エラー:", err);
       const basePrice = 40000 + Math.random() * 30000;
       const allCandles = generateDemoCandles(50, basePrice);
       setVisibleCandles(allCandles.slice(0, 30));
@@ -211,63 +218,19 @@ export default function SessionPage() {
 
   // セッション完了
   const handleComplete = async () => {
-    const result = store.getResult();
-    try {
-      await supabase
-        .from("user_sessions")
-        .update({
-          status: "completed",
-          total_knocks: store.currentKnock,
-          profit_factor: result.profitFactor === Infinity ? 99 : result.profitFactor,
-          risk_reward_ratio: result.riskRewardRatio === Infinity ? 99 : result.riskRewardRatio,
-          expected_value: result.expectedValue,
-          win_rate: result.winRate,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", sessionId);
-    } catch (err) {
-      console.error("セッション更新エラー:", err);
-    }
+    store.saveToHistory();
     router.push(`/result/${sessionId}`);
   };
 
   // 保存して中断
   const handleSaveAndExit = async () => {
-    try {
-      await supabase
-        .from("user_sessions")
-        .update({
-          current_knock: store.currentKnock,
-          total_knocks: store.currentKnock - 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", sessionId);
-    } catch (err) {
-      console.error("セッション保存エラー:", err);
-    }
-    store.reset();
+    // LocalStorage (persist) により、遷移して戻るだけで再開可能
     router.push("/dashboard");
   };
 
   // ここまでで判定
   const handleJudgeAndExit = async () => {
-    const result = store.getResult();
-    try {
-      await supabase
-        .from("user_sessions")
-        .update({
-          status: "abandoned",
-          total_knocks: store.currentKnock - 1,
-          profit_factor: result.profitFactor === Infinity ? 99 : result.profitFactor,
-          risk_reward_ratio: result.riskRewardRatio === Infinity ? 99 : result.riskRewardRatio,
-          expected_value: result.expectedValue,
-          win_rate: result.winRate,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", sessionId);
-    } catch (err) {
-      console.error("セッション更新エラー:", err);
-    }
+    store.saveToHistory();
     router.push(`/result/${sessionId}`);
   };
 

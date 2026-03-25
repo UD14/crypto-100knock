@@ -1,12 +1,11 @@
 "use client";
 
-// ダッシュボードクライアントコンポーネント
-import { useState } from "react";
+// ダッシュボードクライアントコンポーネント (MVP: LocalStorage 版)
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 import { motion } from "framer-motion";
-import type { User } from "@supabase/supabase-js";
-import type { UserSession, SessionConfig } from "@/types";
+import { useSessionStore } from "@/store/session";
+import type { SessionConfig } from "@/types";
 import {
   Play,
   RotateCcw,
@@ -14,261 +13,189 @@ import {
   TrendingUp,
   TrendingDown,
   Clock,
-  LogOut,
   Bitcoin,
   ChevronRight,
+  Trash2,
+  Zap,
 } from "lucide-react";
 
-interface DashboardClientProps {
-  user: User;
-  sessions: UserSession[];
-}
-
-export default function DashboardClient({
-  user,
-  sessions,
-}: DashboardClientProps) {
+export default function DashboardClient() {
   const router = useRouter();
-  const supabase = createClient();
+  const store = useSessionStore();
+  const [isMounted, setIsMounted] = useState(false);
   const [config, setConfig] = useState<SessionConfig>({
     symbol: "BTC",
     timeframe: "4h",
   });
-  const [starting, setStarting] = useState(false);
 
-  // 進行中セッション
-  const inProgressSessions = sessions.filter(
-    (s) => s.status === "in_progress"
-  );
-  // 完了セッション
-  const completedSessions = sessions.filter(
-    (s) => s.status === "completed" || s.status === "abandoned"
-  );
+  // Client-side hydration check
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) return null;
+
+  // 進行中セッション (Zustandに現在進行中があれば表示)
+  const isSessionActive = store.status === "active";
 
   // 新規セッション開始
-  const handleStartSession = async () => {
-    setStarting(true);
-    try {
-      const { data, error } = await supabase
-        .from("user_sessions")
-        .insert({
-          user_id: user.id,
-          symbol: config.symbol,
-          timeframe: config.timeframe,
-          status: "in_progress",
-          current_knock: 1,
-          total_knocks: 0,
-        })
-        .select()
-        .single();
+  const handleStartSession = () => {
+    store.startSession(config.symbol, config.timeframe);
+    router.push(`/session/${store.sessionId ?? "new"}`);
+  };
 
-      if (error) throw error;
-      router.push(`/session/${data.id}`);
-    } catch (err) {
-      console.error("セッション作成エラー:", err);
-      setStarting(false);
+  // 履歴クリア
+  const handleClearHistory = () => {
+    if (confirm("履歴をすべて削除しますか？")) {
+      store.reset();
+      localStorage.removeItem("crypto-100knock-storage");
+      window.location.reload();
     }
   };
 
-  // ログアウト
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
-  };
-
   return (
-    <div className="min-h-screen px-4 py-6 md:px-8 max-w-4xl mx-auto">
+    <div className="min-h-screen px-4 py-8 md:px-8 max-w-4xl mx-auto space-y-8">
       {/* ヘッダー */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl md:text-2xl font-black text-white">
-            仮想通貨100本ノック
+          <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+            DASHBOARD
           </h1>
-          <p className="text-xs text-gray-500 mt-1">{user.email}</p>
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Survival Training Center</p>
         </div>
         <button
-          id="logout-btn"
-          onClick={handleLogout}
-          className="text-gray-500 hover:text-gray-300 transition-colors p-2"
+          onClick={handleClearHistory}
+          className="text-gray-600 hover:text-red-400 transition-colors p-2"
+          title="履歴をクリア"
         >
-          <LogOut className="w-5 h-5" />
+          <Trash2 className="w-5 h-5" />
         </button>
       </div>
 
-      {/* 新規セッション開始 */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card glow-border p-6 mb-6"
-      >
-        <h2 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-          <Play className="w-4 h-4 text-blue-400" />
-          新しいノックを開始
-        </h2>
-
-        <div className="grid grid-cols-2 gap-4 mb-5">
-          {/* 通貨選択 */}
-          <div>
-            <label className="text-xs text-gray-500 mb-2 block">通貨ペア</label>
-            <div className="flex gap-2">
-              {(["BTC", "ETH"] as const).map((sym) => (
-                <button
-                  key={sym}
-                  id={`symbol-${sym.toLowerCase()}`}
-                  onClick={() => setConfig((c) => ({ ...c, symbol: sym }))}
-                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                    config.symbol === sym
-                      ? "bg-blue-600 text-white"
-                      : "bg-[#1a1f2e] text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  {sym === "BTC" && <Bitcoin className="w-3 h-3 inline mr-1" />}
-                  {sym}/USDT
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 時間足選択 */}
-          <div>
-            <label className="text-xs text-gray-500 mb-2 block">時間足</label>
-            <div className="flex gap-2">
-              {(["1h", "4h", "1d"] as const).map((tf) => (
-                <button
-                  key={tf}
-                  id={`timeframe-${tf}`}
-                  onClick={() =>
-                    setConfig((c) => ({ ...c, timeframe: tf }))
-                  }
-                  className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all ${
-                    config.timeframe === tf
-                      ? "bg-blue-600 text-white"
-                      : "bg-[#1a1f2e] text-gray-500 hover:text-gray-300"
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <button
-          id="start-session-btn"
-          onClick={handleStartSession}
-          disabled={starting}
-          className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white py-3 rounded-lg font-bold text-sm hover:from-green-500 hover:to-emerald-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          <Play className="w-4 h-4" />
-          {starting ? "準備中..." : "100本ノック開始"}
-        </button>
-      </motion.div>
-
-      {/* 進行中セッション */}
-      {inProgressSessions.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-6"
-        >
-          <h2 className="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
-            <RotateCcw className="w-4 h-4" />
-            中断中のセッション
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* 新規セッション開始 */}
+        <section className="space-y-4">
+          <h2 className="text-sm font-bold text-gray-400 flex items-center gap-2 uppercase tracking-wider">
+            <Play className="w-4 h-4 text-blue-500" />
+            Start Training
           </h2>
-          <div className="space-y-2">
-            {inProgressSessions.map((session) => (
+          <div className="glass-card glow-border p-6 space-y-6">
+            <div className="space-y-4">
+              {/* 通貨選択 */}
+              <div className="space-y-2">
+                <label className="text-[10px] text-gray-500 uppercase font-bold">Trading Pair</label>
+                <div className="flex gap-2">
+                  {(["BTC", "ETH"] as const).map((sym) => (
+                    <button
+                      key={sym}
+                      onClick={() => setConfig((c) => ({ ...c, symbol: sym }))}
+                      className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold transition-all border ${
+                        config.symbol === sym
+                          ? "bg-blue-600 border-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]"
+                          : "bg-[#111827] border-white/5 text-gray-500 hover:border-white/10"
+                      }`}
+                    >
+                      {sym === "BTC" && <Bitcoin className="w-3 h-3 inline mr-1" />}
+                      {sym}/USDT
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 時間足選択 */}
+              <div className="space-y-2">
+                <label className="text-[10px] text-gray-500 uppercase font-bold">Timeframe</label>
+                <div className="flex gap-2">
+                  {(["1h", "4h", "1d"] as const).map((tf) => (
+                    <button
+                      key={tf}
+                      onClick={() => setConfig((c) => ({ ...c, timeframe: tf }))}
+                      className={`flex-1 py-3 px-4 rounded-xl text-xs font-bold transition-all border ${
+                        config.timeframe === tf
+                          ? "bg-blue-600 border-blue-500 text-white"
+                          : "bg-[#111827] border-white/5 text-gray-500 hover:border-white/10"
+                      }`}
+                    >
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleStartSession}
+              className="w-full bg-white text-black hover:bg-gray-200 py-4 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-2"
+            >
+              <Zap className="w-4 h-4 fill-current" />
+              100本ノックを開始
+            </button>
+          </div>
+        </section>
+
+        {/* 状態 & 歴史 */}
+        <div className="space-y-8">
+          {/* 中断中のセッション */}
+          {isSessionActive && (
+            <section className="space-y-4">
+              <h2 className="text-sm font-bold text-amber-500 flex items-center gap-2 uppercase tracking-wider">
+                <RotateCcw className="w-4 h-4" />
+                Resume Training
+              </h2>
               <button
-                key={session.id}
-                onClick={() => router.push(`/session/${session.id}`)}
-                className="glass-card w-full p-4 flex items-center justify-between hover:bg-[#232a3d] transition-colors text-left"
+                onClick={() => router.push(`/session/${store.sessionId}`)}
+                className="glass-card w-full p-5 flex items-center justify-between hover:bg-white/5 transition-all border-amber-500/20"
               >
-                <div>
-                  <span className="text-xs font-bold text-white">
-                    {session.symbol}/USDT
-                  </span>
-                  <span className="text-xs text-gray-500 ml-2">
-                    {session.timeframe}
-                  </span>
-                  <div className="text-[10px] text-gray-600 mt-1">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    {session.current_knock}/100 問目
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-xs font-bold text-white uppercase">{config.symbol}/USDT</p>
+                    <p className="text-[10px] text-gray-500">#{store.currentKnock} / 100 PROGRESS</p>
                   </div>
                 </div>
                 <ChevronRight className="w-4 h-4 text-gray-600" />
               </button>
-            ))}
-          </div>
-        </motion.div>
-      )}
+            </section>
+          )}
 
-      {/* 過去の成績 */}
-      {completedSessions.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <h2 className="text-sm font-bold text-gray-400 mb-3 flex items-center gap-2">
-            <Trophy className="w-4 h-4" />
-            過去の成績
-          </h2>
-          <div className="space-y-2">
-            {completedSessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => router.push(`/result/${session.id}`)}
-                className="glass-card w-full p-4 flex items-center justify-between hover:bg-[#232a3d] transition-colors text-left"
-              >
-                <div className="flex items-center gap-4">
-                  <div>
-                    <span className="text-xs font-bold text-white">
-                      {session.symbol}/USDT
-                    </span>
-                    <span className="text-xs text-gray-500 ml-2">
-                      {session.timeframe}
-                    </span>
-                    {session.status === "abandoned" && (
-                      <span className="text-[10px] text-amber-500 ml-2">
-                        途中判定
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <div className="text-xs font-bold">
-                      {session.win_rate !== null ? (
-                        <span
-                          className={
-                            session.win_rate >= 0.5
-                              ? "text-green-400"
-                              : "text-red-400"
-                          }
-                        >
-                          {(session.win_rate * 100).toFixed(0)}%
-                        </span>
-                      ) : (
-                        <span className="text-gray-600">—</span>
-                      )}
+          {/* 過去の戦績 */}
+          <section className="space-y-4">
+            <h2 className="text-sm font-bold text-gray-400 flex items-center gap-2 uppercase tracking-wider">
+              <Trophy className="w-4 h-4" />
+              Battle History
+            </h2>
+            {store.sessionHistory.length > 0 ? (
+              <div className="space-y-3">
+                {store.sessionHistory.map((session, idx) => (
+                  <div
+                    key={idx}
+                    className="glass-card p-4 flex items-center justify-between border-white/5"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${session.winRate >= 50 ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                         {session.winRate >= 50 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-white">{session.totalPnl.toFixed(2)}%</p>
+                        <p className="text-[10px] text-gray-500">{session.totalKnocks}問 • 勝率 {session.winRate.toFixed(0)}%</p>
+                      </div>
                     </div>
-                    <div className="text-[10px] text-gray-600">
-                      {session.total_knocks}問完了
+                    <div className="text-right">
+                       <p className="text-[10px] text-gray-400 uppercase font-medium">PF {session.profitFactor.toFixed(2)}</p>
                     </div>
                   </div>
-                  {session.win_rate !== null &&
-                    (session.win_rate >= 0.5 ? (
-                      <TrendingUp className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <TrendingDown className="w-4 h-4 text-red-500" />
-                    ))}
-                </div>
-              </button>
-            ))}
-          </div>
-        </motion.div>
-      )}
+                ))}
+              </div>
+            ) : (
+              <div className="glass-card p-12 text-center border-dashed border-white/5">
+                <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold">No Records Yet</p>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }

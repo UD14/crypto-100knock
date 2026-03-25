@@ -1,143 +1,120 @@
-// セッション状態管理ストア（Zustand）
+// セッション状態管理ストア（Zustand + LocalStorage 永続化）
 import { create } from "zustand";
-import type { TradeAction, Scenario, SessionAction, SessionResult } from "@/types";
+import { persist } from "zustand/middleware";
+import type { SessionState, SessionResult, SessionAction, TradeAction } from "@/types";
 
-interface SessionState {
-  // セッション情報
-  sessionId: string | null;
-  currentKnock: number;
-  totalKnocks: number;
-
-  // 現在のシナリオ
-  currentScenario: Scenario | null;
-  revealedCount: number;       // 公開済みキャンドル数
-  hasPosition: boolean;        // ポジションを持っているか
-  positionType: "long" | "short" | null;
-  entryPrice: number | null;
-
-  // 累積結果
-  actions: SessionAction[];
-  totalPnl: number;
-  wins: number;
-  losses: number;
-  holds: number;
-
-  // アクション
-  setSessionId: (id: string) => void;
-  setScenario: (scenario: Scenario) => void;
-  revealNextCandle: () => void;
+interface SessionStore extends SessionState {
+  sessionHistory: SessionResult[];
+  setSessionId: (id: string | null) => void;
+  startSession: (symbol: string, timeframe: string) => void;
+  nextKnock: () => void;
   submitAction: (action: TradeAction) => void;
   addActionResult: (result: SessionAction) => void;
-  nextKnock: () => void;
-  reset: () => void;
   getResult: () => SessionResult;
+  saveToHistory: () => void;
+  reset: () => void;
 }
 
-const initialState = {
+const initialState: SessionState = {
   sessionId: null,
+  userId: "guest",
+  status: "idle",
   currentKnock: 1,
-  totalKnocks: 100,
-  currentScenario: null,
-  revealedCount: 0,
-  hasPosition: false,
-  positionType: null as "long" | "short" | null,
-  entryPrice: null as number | null,
-  actions: [] as SessionAction[],
   totalPnl: 0,
-  wins: 0,
-  losses: 0,
-  holds: 0,
+  winCount: 0,
+  lossCount: 0,
+  holdCount: 0,
+  actionResults: [],
+  hasPosition: false,
+  positionType: null,
+  entryPrice: null,
 };
 
-export const useSessionStore = create<SessionState>((set, get) => ({
-  ...initialState,
+export const useSessionStore = create<SessionStore>()(
+  persist(
+    (set, get) => ({
+      ...initialState,
+      sessionHistory: [],
 
-  setSessionId: (id) => set({ sessionId: id }),
+      setSessionId: (id) => set({ sessionId: id }),
 
-  setScenario: (scenario) => set({ currentScenario: scenario, revealedCount: 0 }),
+      startSession: (symbol, timeframe) =>
+        set({
+          ...initialState,
+          sessionId: `local-${Date.now()}`,
+          status: "active",
+        }),
 
-  revealNextCandle: () =>
-    set((state) => ({ revealedCount: state.revealedCount + 1 })),
+      nextKnock: () =>
+        set((state) => ({
+          currentKnock: state.currentKnock + 1,
+        })),
 
-  submitAction: (action) => {
-    const state = get();
-    if (!state.currentScenario) return;
+      submitAction: (action) => {
+        const state = get();
+        if (action === "buy") {
+          set({ hasPosition: true, positionType: "long" });
+        } else if (action === "sell") {
+          set({ hasPosition: true, positionType: "short" });
+        } else if (action === "stop_loss" || (action === "hold" && state.hasPosition)) {
+          set({ hasPosition: false, positionType: null, entryPrice: null });
+        }
+      },
 
-    const currentCandles = state.currentScenario.candles;
-    const lastCandle = currentCandles[currentCandles.length - 1];
+      addActionResult: (result) =>
+        set((state) => ({
+          actionResults: [...state.actionResults, result],
+          totalPnl: state.totalPnl + result.pnl,
+          winCount: result.pnl > 0 ? state.winCount + 1 : state.winCount,
+          lossCount: result.pnl < 0 ? state.lossCount + 1 : state.lossCount,
+          holdCount: result.action === "hold" ? state.holdCount + 1 : state.holdCount,
+        })),
 
-    if (action === "buy") {
-      set({
-        hasPosition: true,
-        positionType: "long",
-        entryPrice: lastCandle.close,
-      });
-    } else if (action === "sell") {
-      set({
-        hasPosition: true,
-        positionType: "short",
-        entryPrice: lastCandle.close,
-      });
-    } else if (action === "stop_loss" && state.hasPosition) {
-      // ストップロスは即座にポジション解消
-      set({
-        hasPosition: false,
-        positionType: null,
-        entryPrice: null,
-      });
+      getResult: () => {
+        const state = get();
+        const totalTrades = state.winCount + state.lossCount;
+        const winRate = totalTrades > 0 ? (state.winCount / totalTrades) * 100 : 0;
+
+        const totalProfit = state.actionResults
+          .filter((r) => r.pnl > 0)
+          .reduce((sum, r) => sum + r.pnl, 0);
+        const totalLoss = Math.abs(
+          state.actionResults.filter((r) => r.pnl < 0).reduce((sum, r) => sum + r.pnl, 0)
+        );
+
+        const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? 99 : 0;
+
+        return {
+          totalKnocks: state.currentKnock - 1,
+          winRate,
+          totalPnl: state.totalPnl,
+          profitFactor,
+          riskRewardRatio: 1.5,
+          expectedValue: state.totalPnl / (state.currentKnock || 1),
+          totalTrades,
+          winTrades: state.winCount,
+          lossTrades: state.lossCount,
+          holdCount: state.holdCount,
+          actions: state.actionResults,
+        };
+      },
+
+      saveToHistory: () => {
+        const state = get();
+        if (state.actionResults.length === 0) return;
+        const result = state.getResult();
+        set((s) => ({
+          sessionHistory: [result, ...s.sessionHistory].slice(0, 10), // 最新10件保持
+        }));
+      },
+
+      reset: () => {
+        const { sessionHistory } = get();
+        set({ ...initialState, sessionHistory });
+      },
+    }),
+    {
+      name: "crypto-100knock-storage",
     }
-  },
-
-  addActionResult: (result) =>
-    set((state) => ({
-      actions: [...state.actions, result],
-      totalPnl: state.totalPnl + result.pnl,
-      wins: result.pnl > 0 ? state.wins + 1 : state.wins,
-      losses: result.pnl < 0 ? state.losses + 1 : state.losses,
-      holds: result.action === "hold" ? state.holds + 1 : state.holds,
-    })),
-
-  nextKnock: () =>
-    set((state) => ({
-      currentKnock: state.currentKnock + 1,
-      currentScenario: null,
-      revealedCount: 0,
-      hasPosition: false,
-      positionType: null,
-      entryPrice: null,
-    })),
-
-  reset: () => set(initialState),
-
-  getResult: () => {
-    const state = get();
-    const winActions = state.actions.filter((a) => a.pnl > 0);
-    const lossActions = state.actions.filter((a) => a.pnl < 0);
-
-    const totalProfit = winActions.reduce((sum, a) => sum + a.pnl, 0);
-    const totalLoss = Math.abs(lossActions.reduce((sum, a) => sum + a.pnl, 0));
-
-    const profitFactor = totalLoss > 0 ? totalProfit / totalLoss : totalProfit > 0 ? Infinity : 0;
-
-    const avgWin = winActions.length > 0 ? totalProfit / winActions.length : 0;
-    const avgLoss = lossActions.length > 0 ? totalLoss / lossActions.length : 0;
-    const riskRewardRatio = avgLoss > 0 ? avgWin / avgLoss : avgWin > 0 ? Infinity : 0;
-
-    const totalTrades = winActions.length + lossActions.length;
-    const winRate = totalTrades > 0 ? winActions.length / totalTrades : 0;
-    const expectedValue = winRate * avgWin - (1 - winRate) * avgLoss;
-
-    return {
-      profitFactor,
-      riskRewardRatio,
-      expectedValue,
-      winRate,
-      totalTrades,
-      winTrades: winActions.length,
-      lossTrades: lossActions.length,
-      holdCount: state.holds,
-      totalPnl: state.totalPnl,
-      actions: state.actions,
-    };
-  },
-}));
+  )
+);

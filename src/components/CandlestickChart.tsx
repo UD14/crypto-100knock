@@ -84,8 +84,20 @@ export default function CandlestickChart({ candles, className = "" }: ChartProps
     // 時系列でソート
     chartData.sort((a, b) => (a.time as number) - (b.time as number));
 
-    seriesRef.current.setData(chartData as Parameters<typeof seriesRef.current.setData>[0]);
-    chartRef.current?.timeScale().fitContent();
+    // 重複を排除 (lightweight-charts は厳密な昇順を要求するため)
+    const uniqueData = chartData.filter((item, index, self) => 
+      index === 0 || item.time > self[index - 1].time
+    );
+
+    if (uniqueData.length > 0) {
+      seriesRef.current.setData(uniqueData as any);
+      
+      // 初回またはデータ追加時にコンテンツにフィットさせる
+      // 短いタイムアウトを入れることで、レンダリング直後のサイズ計算ミスを防ぐ
+      requestAnimationFrame(() => {
+        chartRef.current?.timeScale().fitContent();
+      });
+    }
   }, [candles]);
 
   return (
